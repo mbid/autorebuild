@@ -109,26 +109,13 @@ rebuildNecessary changedFilePaths = do
   ignoredFlags <- sequence $ map isIgnored changedFilePaths
   return $ not $ and ignoredFlags
   
--- rebuildIfNecessary :: [FilePath] -> IO () -> IO ()
--- rebuildIfNecessary paths rebuild = do
---   ignoredFlags <- sequence $ map isIgnored paths
---   if and ignoredFlags
---     then rebuild
---     else return ()
-
 rebuild :: [FilePath] -> IO ()
 rebuild changedFilePaths = do
   necessary <- rebuildNecessary changedFilePaths
   if necessary
-    then (readCreateProcess (shell "ghc autorebuild.hs") "") >>= putStrLn
+    then (readCreateProcess (shell "ghc autorebuild.hs") "") >>= putStr
     else return ()
 
 
 main :: IO ()
 main = onFileChange "." rebuild
-                           
-  -- threadDelay $ 1000000 * 5
-  -- inotifyOut <- (launchInotify ".") >>= (return . lineBuffered)
-  -- print "123"
-  -- printLines inotifyOut
-
