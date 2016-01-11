@@ -6,7 +6,7 @@ import Control.Monad
 import Control.Arrow
 import Control.Concurrent
 import Options.Applicative
-
+import Data.List
 
 
 
@@ -93,12 +93,16 @@ isGitRepository = do
 
 
 isGitIgnored :: FilePath -> IO Bool
-isGitIgnored path = do
-  (exitCode, _, _) <- readProcessWithExitCode "/usr/bin/git" ["check-ignore", path] ""
-  case exitCode of
-    ExitSuccess   -> return True
-    ExitFailure 1 -> return False
-    otherwise     -> error "git check-ignore error"
+isGitIgnored filePath = do
+  -- quick-and-dirty hack to detect files in .git directory
+  if ".git/" `isInfixOf` filePath
+    then return True
+    else do
+      (exitCode, _, _) <- readProcessWithExitCode "/usr/bin/git" ["check-ignore", filePath] ""
+      case exitCode of
+        ExitSuccess   -> return True
+        ExitFailure 1 -> return False
+        otherwise     -> error "git check-ignore error"
 
 mLazyAnd :: Monad m => [m Bool] -> m Bool
 mLazyAnd []         = return True
