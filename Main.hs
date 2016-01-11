@@ -1,6 +1,7 @@
 import System.Process
 import System.IO
 import System.Exit
+import System.Directory
 import Control.Monad
 import Control.Arrow
 import Control.Concurrent
@@ -79,9 +80,11 @@ onFileChange path action = do
 
   loop inotifyOut
 
+gitInstalled :: IO Bool
+gitInstalled = doesFileExist "/usr/bin/git"
 
-isGitRepo :: IO Bool
-isGitRepo = do
+isGitRepository :: IO Bool
+isGitRepository = do
   (exitCode, _, _) <- readProcessWithExitCode "/usr/bin/git" ["status"] ""
   case exitCode of
     ExitSuccess     -> return True
@@ -97,14 +100,21 @@ isGitIgnored path = do
     ExitFailure 1 -> return False
     otherwise     -> error "git check-ignore error"
 
+mLazyAnd :: Monad m => [m Bool] -> m Bool
+mLazyAnd []         = return True
+mLazyAnd (mb : mbs) = do
+  b <- mb
+  if b
+    then mLazyAnd mbs
+    else return False
 
 watchAndExecute :: FilePath -> (FilePath -> IO Bool) -> CreateProcess -> IO ()
 watchAndExecute filePath ignorePredicate process = onFileChange filePath onChange
   where
     onChange :: [FilePath] -> IO ()
     onChange filePaths = do
-      ignoreFlags <- sequence $ map ignorePredicate filePaths
-      when (not $ and ignoreFlags) $ do
+      ignoreFileChange <- mLazyAnd $ map ignorePredicate filePaths
+      when (not ignoreFileChange) $ do
         (_, stdout, stderr) <- readCreateProcessWithExitCode process ""
         putStrLn stdout
 
@@ -138,7 +148,18 @@ main = do
   let 
     process = shell $ shellCommand opts
     dir = directory opts
-    ignorePredicate = if (not $ ignoreGit opts) -- && (not $ isGitIgnored dir)
-                        then \filePath -> isGitIgnored $ filePath
-                        else \_ -> return False  
+    gitPredicateConditions = [ return $ not $ ignoreGit opts
+                             , gitInstalled
+                             , isGitRepository ]
+    trivialIgnorePredicate :: FilePath -> IO Bool
+    trivialIgnorePredicate _ = return False
+
+  useGit <- mLazyAnd gitPredicateConditions
+  print useGit
+
+  -- when (dir /= "./") $ error "DIRECTORY different from './' not implemented"
+  let ignorePredicate = if useGit
+                          then isGitIgnored
+                          else \_ -> return False
+
   watchAndExecute dir ignorePredicate process
