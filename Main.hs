@@ -1,9 +1,11 @@
 import System.Process
 import System.IO
+import System.Exit
 import Control.Monad
 import Control.Arrow
 import Control.Concurrent
-import System.Exit
+import Options.Applicative
+
 
 
 
@@ -87,8 +89,8 @@ isGitRepo = do
     otherwise       -> error "git status error"
 
 
-isIgnored :: FilePath -> IO Bool
-isIgnored path = do
+isGitIgnored :: FilePath -> IO Bool
+isGitIgnored path = do
   (exitCode, _, _) <- readProcessWithExitCode "/usr/bin/git" ["check-ignore", path] ""
   case exitCode of
     ExitSuccess   -> return True
@@ -96,26 +98,47 @@ isIgnored path = do
     otherwise     -> error "git check-ignore error"
 
 
-printLines :: LineBufferedHandle -> IO ()
-printLines handle = do
-  (handle, maybeLine) <- readLineNonBlocking handle
-  case maybeLine of
-    Nothing   -> (threadDelay $ 1000000 * 5) >> printLines handle
-    Just line -> putStrLn line >> printLines handle
+watchAndExecute :: FilePath -> (FilePath -> IO Bool) -> CreateProcess -> IO ()
+watchAndExecute filePath ignorePredicate process = onFileChange filePath onChange
+  where
+    onChange :: [FilePath] -> IO ()
+    onChange filePaths = do
+      ignoreFlags <- sequence $ map ignorePredicate filePaths
+      when (not $ and ignoreFlags) $ do
+        (_, stdout, stderr) <- readCreateProcessWithExitCode process ""
+        putStrLn stdout
 
+data Options = Options
+  { shellCommand :: String
+  , directory :: FilePath 
+  , ignoreGit :: Bool }
+  deriving Show
 
-rebuildNecessary :: [FilePath] -> IO Bool
-rebuildNecessary changedFilePaths = do
-  ignoredFlags <- sequence $ map isIgnored changedFilePaths
-  return $ not $ and ignoredFlags
-  
-rebuild :: [FilePath] -> IO ()
-rebuild changedFilePaths = do
-  necessary <- rebuildNecessary changedFilePaths
-  if necessary
-    then (readCreateProcess (shell "ghc autorebuild.hs") "") >>= putStr
-    else return ()
+optionsParser :: Parser Options
+optionsParser = Options
+            <$> strArgument (metavar "COMMAND")
+            <*> strOption 
+                ( long "dir"
+               <> short 'd'
+               <> metavar "DIRECTORY"
+               <> help "Watch for changed files in DIRECTORY instead of './'"
+               <> value "./" )
+            <*> switch 
+                ( long "no-git"
+               <> help "don't ignore files ignored by git (if any)" )
 
+optionsParserInfo = info (helper <*> optionsParser)
+                    ( fullDesc 
+                   <> progDesc "Execute shell command 'COMMAND' when file in DIRECTORY changes"
+                   <> header "autorebuild - a utility for automatic rebuilds")
 
 main :: IO ()
-main = onFileChange "." rebuild
+main = do
+  opts <- execParser optionsParserInfo
+  let 
+    process = shell $ shellCommand opts
+    dir = directory opts
+    ignorePredicate = if (not $ ignoreGit opts) -- && (not $ isGitIgnored dir)
+                        then \filePath -> isGitIgnored $ filePath
+                        else \_ -> return False  
+  watchAndExecute dir ignorePredicate process
