@@ -157,7 +157,7 @@ main = do
   useGit <- mLazyAnd gitPredicateConditions
   print useGit
 
-  -- when (dir /= "./") $ error "DIRECTORY different from './' not implemented"
+  when (dir /= "./") $ error "DIRECTORY different from './' not implemented"
   let ignorePredicate = if useGit
                           then isGitIgnored
                           else \_ -> return False
