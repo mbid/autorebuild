@@ -1,2 +1,3 @@
-build
 autorebuild
+autorebuild.hi
+autorebuild.o
