@@ -83,9 +83,9 @@ onFileChange path action = do
 gitInstalled :: IO Bool
 gitInstalled = doesFileExist "/usr/bin/git"
 
-isGitRepository :: IO Bool
-isGitRepository = do
-  let process = (proc "/usr/bin/git" ["status"])
+isGitRepository :: FilePath -> IO Bool
+isGitRepository filePath = do
+  let process = (proc "/usr/bin/git" ["status"]) {cwd = Just filePath}
   (exitCode, _, _) <- readCreateProcessWithExitCode process ""
   case exitCode of
     ExitSuccess     -> return True
@@ -99,7 +99,7 @@ isGitIgnored filePath = do
   if ".git/" `isInfixOf` filePath
     then return True
     else do
-      let process = (proc "/usr/bin/git" ["check-ignore", filePath]) -- {cwd = Just filePath}
+      let process = (proc "/usr/bin/git" ["check-ignore", filePath])
       (exitCode, _, _) <- readCreateProcessWithExitCode process ""
       case exitCode of
         ExitSuccess   -> return True
@@ -128,12 +128,19 @@ watchAndExecute filePath ignorePredicate process = onFileChange filePath onChang
 
 data Options = Options
   { shellCommand :: String
+  , directory :: FilePath 
   , ignoreGit :: Bool }
   deriving Show
 
 optionsParser :: Parser Options
 optionsParser = Options
             <$> strArgument (metavar "COMMAND")
+            <*> strOption 
+                ( long "watch-dir"
+               <> short 'd'
+               <> metavar "WATCH_DIR"
+               <> help "Watch for changed files in WATCH_DIR instead of './'"
+               <> value "./" )
             <*> switch 
                 ( long "no-git"
                <> help "don't ignore files ignored by git (if any)" )
@@ -148,9 +155,10 @@ main = do
   opts <- execParser optionsParserInfo
   let 
     process = shell $ shellCommand opts
+    dir = directory opts
     gitPredicateConditions = [ return $ not $ ignoreGit opts
                              , gitInstalled
-                             , isGitRepository ]
+                             , isGitRepository dir ]
     trivialIgnorePredicate :: FilePath -> IO Bool
     trivialIgnorePredicate _ = return False
 
@@ -160,4 +168,4 @@ main = do
                           then isGitIgnored
                           else \_ -> return False
 
-  watchAndExecute "." ignorePredicate process
+  watchAndExecute dir ignorePredicate process
