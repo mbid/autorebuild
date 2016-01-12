@@ -83,9 +83,10 @@ onFileChange path action = do
 gitInstalled :: IO Bool
 gitInstalled = doesFileExist "/usr/bin/git"
 
-isGitRepository :: IO Bool
-isGitRepository = do
-  (exitCode, _, _) <- readProcessWithExitCode "/usr/bin/git" ["status"] ""
+isGitRepository :: FilePath -> IO Bool
+isGitRepository filePath = do
+  let process = (proc "/usr/bin/git" ["status"]) {cwd = Just filePath}
+  (exitCode, _, _) <- readCreateProcessWithExitCode process ""
   case exitCode of
     ExitSuccess     -> return True
     ExitFailure 128 -> return False
@@ -98,7 +99,9 @@ isGitIgnored filePath = do
   if ".git/" `isInfixOf` filePath
     then return True
     else do
-      (exitCode, _, _) <- readProcessWithExitCode "/usr/bin/git" ["check-ignore", filePath] ""
+      let process = (proc "/usr/bin/git" ["check-ignore", filePath]) {cwd = Just filePath}
+      (exitCode, _, _) <- readCreateProcessWithExitCode process ""
+      -- (exitCode, _, _) <- readProcessWithExitCode "/usr/bin/git" ["check-ignore", filePath] ""
       case exitCode of
         ExitSuccess   -> return True
         ExitFailure 1 -> return False
@@ -119,8 +122,10 @@ watchAndExecute filePath ignorePredicate process = onFileChange filePath onChang
     onChange filePaths = do
       ignoreFileChange <- mLazyAnd $ map ignorePredicate filePaths
       when (not ignoreFileChange) $ do
-        (_, stdout, stderr) <- readCreateProcessWithExitCode process ""
-        putStrLn stdout
+
+        (_, _, _, processHandle) <- createProcess process
+        waitForProcess processHandle
+        return ()
 
 data Options = Options
   { shellCommand :: String
@@ -154,13 +159,12 @@ main = do
     dir = directory opts
     gitPredicateConditions = [ return $ not $ ignoreGit opts
                              , gitInstalled
-                             , isGitRepository ]
+                             , isGitRepository dir ]
     trivialIgnorePredicate :: FilePath -> IO Bool
     trivialIgnorePredicate _ = return False
 
   useGit <- mLazyAnd gitPredicateConditions
 
-  when (dir /= "./") $ error "DIRECTORY different from './' not implemented"
   let ignorePredicate = if useGit
                           then isGitIgnored
                           else \_ -> return False
