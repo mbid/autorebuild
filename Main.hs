@@ -83,9 +83,9 @@ onFileChange path action = do
 gitInstalled :: IO Bool
 gitInstalled = doesFileExist "/usr/bin/git"
 
-isGitRepository :: FilePath -> IO Bool
-isGitRepository filePath = do
-  let process = (proc "/usr/bin/git" ["status"]) {cwd = Just filePath}
+isGitRepository :: IO Bool
+isGitRepository = do
+  let process = (proc "/usr/bin/git" ["status"])
   (exitCode, _, _) <- readCreateProcessWithExitCode process ""
   case exitCode of
     ExitSuccess     -> return True
@@ -128,26 +128,19 @@ watchAndExecute filePath ignorePredicate process = onFileChange filePath onChang
 
 data Options = Options
   { shellCommand :: String
-  , directory :: FilePath 
   , ignoreGit :: Bool }
   deriving Show
 
 optionsParser :: Parser Options
 optionsParser = Options
             <$> strArgument (metavar "COMMAND")
-            <*> strOption 
-                ( long "dir"
-               <> short 'd'
-               <> metavar "DIRECTORY"
-               <> help "Watch for changed files in DIRECTORY instead of './'"
-               <> value "./" )
             <*> switch 
                 ( long "no-git"
                <> help "don't ignore files ignored by git (if any)" )
 
 optionsParserInfo = info (helper <*> optionsParser)
                     ( fullDesc 
-                   <> progDesc "Execute shell command 'COMMAND' when file in DIRECTORY changes"
+                   <> progDesc "Execute shell command 'COMMAND' when file in current directory changes"
                    <> header "autorebuild - a utility for automatic rebuilds")
 
 main :: IO ()
@@ -155,10 +148,9 @@ main = do
   opts <- execParser optionsParserInfo
   let 
     process = shell $ shellCommand opts
-    dir = directory opts
     gitPredicateConditions = [ return $ not $ ignoreGit opts
                              , gitInstalled
-                             , isGitRepository dir ]
+                             , isGitRepository ]
     trivialIgnorePredicate :: FilePath -> IO Bool
     trivialIgnorePredicate _ = return False
 
@@ -168,4 +160,4 @@ main = do
                           then isGitIgnored
                           else \_ -> return False
 
-  watchAndExecute dir ignorePredicate process
+  watchAndExecute "." ignorePredicate process
