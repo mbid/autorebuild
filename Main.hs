@@ -99,7 +99,7 @@ isGitIgnored filePath = do
   if ".git/" `isInfixOf` filePath
     then return True
     else do
-      let process = (proc "/usr/bin/git" ["check-ignore", filePath]) {cwd = Just filePath}
+      let process = (proc "/usr/bin/git" ["check-ignore", filePath])
       (exitCode, _, _) <- readCreateProcessWithExitCode process ""
       case exitCode of
         ExitSuccess   -> return True
@@ -136,10 +136,10 @@ optionsParser :: Parser Options
 optionsParser = Options
             <$> strArgument (metavar "COMMAND")
             <*> strOption 
-                ( long "dir"
+                ( long "watch-dir"
                <> short 'd'
-               <> metavar "DIRECTORY"
-               <> help "Watch for changed files in DIRECTORY instead of './'"
+               <> metavar "WATCH_DIR"
+               <> help "Watch for changed files in WATCH_DIR instead of './'"
                <> value "./" )
             <*> switch 
                 ( long "no-git"
@@ -147,7 +147,7 @@ optionsParser = Options
 
 optionsParserInfo = info (helper <*> optionsParser)
                     ( fullDesc 
-                   <> progDesc "Execute shell command 'COMMAND' when file in DIRECTORY changes"
+                   <> progDesc "Execute shell command 'COMMAND' when file current directory changes"
                    <> header "autorebuild - a utility for automatic rebuilds")
 
 main :: IO ()
