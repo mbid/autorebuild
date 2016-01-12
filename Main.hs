@@ -99,7 +99,7 @@ isGitIgnored filePath = do
   if ".git/" `isInfixOf` filePath
     then return True
     else do
-      let process = (proc "/usr/bin/git" ["check-ignore", filePath]) {cwd = Just filePath}
+      let process = (proc "/usr/bin/git" ["check-ignore", filePath]) -- {cwd = Just filePath}
       (exitCode, _, _) <- readCreateProcessWithExitCode process ""
       case exitCode of
         ExitSuccess   -> return True
