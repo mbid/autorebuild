@@ -147,7 +147,7 @@ optionsParser = Options
 
 optionsParserInfo = info (helper <*> optionsParser)
                     ( fullDesc 
-                   <> progDesc "Execute shell command 'COMMAND' when file in current directory changes"
+                   <> progDesc "Execute shell command 'COMMAND' whenever a file below the current directory changes"
                    <> header "autorebuild - a utility for automatic rebuilds")
 
 main :: IO ()
