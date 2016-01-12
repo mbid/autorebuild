@@ -101,7 +101,6 @@ isGitIgnored filePath = do
     else do
       let process = (proc "/usr/bin/git" ["check-ignore", filePath]) {cwd = Just filePath}
       (exitCode, _, _) <- readCreateProcessWithExitCode process ""
-      -- (exitCode, _, _) <- readProcessWithExitCode "/usr/bin/git" ["check-ignore", filePath] ""
       case exitCode of
         ExitSuccess   -> return True
         ExitFailure 1 -> return False
