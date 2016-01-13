@@ -12,13 +12,11 @@ import Data.IORef
 
 
 data LineBufferedHandle = LineBufferedHandle { handle :: Handle
-                                             , buffer :: String
-                                             }
+                                             , buffer :: String }
 
 lineBuffered :: Handle -> LineBufferedHandle
 lineBuffered h = LineBufferedHandle { handle = h
-                                    , buffer = ""
-                                    }
+                                    , buffer = "" }
 
 hGetCharNonBlocking :: Handle -> IO (Maybe Char)
 hGetCharNonBlocking handle = do
@@ -36,8 +34,7 @@ readLineNonBlocking lbh = let
       Nothing             -> return (lbh, Nothing)
       Just c  | c == '\n' -> return (LineBufferedHandle {handle = h, buffer = []}, Just $ reverse buf)
       Just c              -> readLineNonBlocking $ LineBufferedHandle { handle = h
-                                                                      , buffer = c : buf
-                                                                      }
+                                                                      , buffer = c : buf }
 
 readAvailableLines :: LineBufferedHandle -> IO (LineBufferedHandle, [String])
 readAvailableLines lbh = (loop lbh []) >>= (return . (id *** reverse))
