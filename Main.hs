@@ -7,6 +7,7 @@ import Control.Arrow
 import Control.Concurrent
 import Options.Applicative
 import Data.List
+import Data.IORef
 
 
 
@@ -51,7 +52,9 @@ readAvailableLines lbh = (loop lbh []) >>= (return . (id *** reverse))
 
 launchInotify :: String -> IO Handle
 launchInotify watchPath = do
-  let procCmd = (proc "/usr/bin/inotifywait" ["-e", "close_write,move,delete", "-r", "-m", watchPath]) { std_out = CreatePipe }
+  let procCmd = (proc "/usr/bin/inotifywait" ["-e", "close_write,move,delete", "-r", "-m", watchPath])
+                { std_out = CreatePipe 
+                , std_err = CreatePipe } -- This could be a memory leak... NoStream would be the right way
   (_, Just outHandle, _, _) <- createProcess procCmd
   return outHandle
 
@@ -114,17 +117,13 @@ mLazyAnd (mb : mbs) = do
     then mLazyAnd mbs
     else return False
 
-watchAndExecute :: FilePath -> (FilePath -> IO Bool) -> CreateProcess -> IO ()
-watchAndExecute filePath ignorePredicate process = onFileChange filePath onChange
+watchAndExecute :: FilePath -> (FilePath -> IO Bool) -> IO () -> IO ()
+watchAndExecute filePath ignorePredicate action = onFileChange filePath onChange
   where
     onChange :: [FilePath] -> IO ()
     onChange filePaths = do
       ignoreFileChange <- mLazyAnd $ map ignorePredicate filePaths
-      when (not ignoreFileChange) $ do
-
-        (_, _, _, processHandle) <- createProcess process
-        waitForProcess processHandle
-        return ()
+      when (not ignoreFileChange) $ action
 
 data Options = Options
   { shellCommand :: String
@@ -150,6 +149,24 @@ optionsParserInfo = info (helper <*> optionsParser)
                    <> progDesc "Execute shell command 'COMMAND' whenever a file below the current directory changes"
                    <> header "autorebuild - a utility for automatic rebuilds")
 
+
+newtype LessProcess = LessProcess ProcessHandle
+
+callInLess :: CreateProcess -> IO LessProcess
+callInLess outputProc = do
+  (Just lessStdIn, _, _, lessProcHandle) <- createProcess $ (proc "/usr/bin/less" []) {std_in = CreatePipe}
+  (_, _, _, outputProcHandle) <- createProcess $ outputProc { std_out = UseHandle lessStdIn
+                                                            , std_err = UseHandle lessStdIn }
+  
+  waitForProcess outputProcHandle
+
+  return $ LessProcess lessProcHandle
+
+stopLess :: LessProcess -> IO ()
+stopLess (LessProcess lessProcHandle) = do
+  terminateProcess lessProcHandle
+  callProcess "/usr/bin/stty" []
+
 main :: IO ()
 main = do
   opts <- execParser optionsParserInfo
@@ -168,4 +185,11 @@ main = do
                           then isGitIgnored
                           else \_ -> return False
 
-  watchAndExecute dir ignorePredicate process
+  refLessProc <- callInLess process >>= newIORef
+  let rebuild = do
+                  lessProc <- readIORef refLessProc 
+                  stopLess lessProc
+                  lessProc <- callInLess process
+                  writeIORef refLessProc lessProc
+
+  watchAndExecute dir ignorePredicate rebuild
