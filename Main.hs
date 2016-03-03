@@ -125,7 +125,8 @@ watchAndExecute filePath ignorePredicate action = onFileChange filePath onChange
 data Options = Options
   { shellCommand :: String
   , directory :: FilePath 
-  , ignoreGit :: Bool }
+  , ignoreGit :: Bool
+  , noLess :: Bool }
   deriving Show
 
 optionsParser :: Parser Options
@@ -140,6 +141,9 @@ optionsParser = Options
             <*> switch 
                 ( long "no-git"
                <> help "don't ignore files ignored by git (if any)" )
+            <*> switch
+                ( long "no-less"
+               <> help "don't pipe output of COMMAND through less" )
 
 optionsParserInfo = info (helper <*> optionsParser)
                     ( fullDesc 
@@ -178,15 +182,22 @@ main = do
 
   useGit <- mLazyAnd gitPredicateConditions
 
-  let ignorePredicate = if useGit
-                          then isGitIgnored
-                          else \_ -> return False
+  let
+    ignorePredicate = if useGit
+                        then isGitIgnored
+                        else \_ -> return False
 
-  refLessProc <- callInLess process >>= newIORef
-  let rebuild = do
-                  lessProc <- readIORef refLessProc 
-                  stopLess lessProc
-                  lessProc <- callInLess process
-                  writeIORef refLessProc lessProc
-
-  watchAndExecute dir ignorePredicate rebuild
+  if noLess opts
+    then do
+      let exec = do (_, _, _, processHandle) <- createProcess process
+                    waitForProcess processHandle
+                    return ()
+      exec
+      watchAndExecute dir ignorePredicate exec
+    else do
+      refLessProc <- callInLess process >>= newIORef
+      watchAndExecute dir ignorePredicate $ do
+        lessProc <- readIORef refLessProc 
+        stopLess lessProc
+        lessProc <- callInLess process
+        writeIORef refLessProc lessProc
